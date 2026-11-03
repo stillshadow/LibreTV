@@ -1,5 +1,7 @@
 node_modules/
 .next/
+.open-next/
+.wrangler/
 out/
 .env
 .env*.local
@@ -12,3 +14,4 @@ vitest-results.json
 .zcode/
 .codebuddy/
 generated-images/
+cloudflare-env.d.ts

@@ -59,8 +59,20 @@ export async function isBlockedByDNS(urlString: string): Promise<boolean> {
     if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.includes(':')) {
       return isPrivateIP(hostname);
     }
-    const result = await dns.lookup(hostname, { all: true });
-    return result.some((r) => isPrivateIP(r.address));
+    try {
+      const result = await dns.lookup(hostname, { all: true });
+      return result.some((record) => isPrivateIP(record.address));
+    } catch (error) {
+      // Cloudflare Workers supports DNS resolution but deliberately leaves
+      // dns.lookup() unimplemented. Fall back only for that runtime error so
+      // ordinary Node.js DNS failures keep the original fail-open behaviour.
+      if (!(error instanceof Error) || !/not implemented/i.test(error.message)) return false;
+      const results = await Promise.allSettled([dns.resolve4(hostname), dns.resolve6(hostname)]);
+      const addresses = results.flatMap((result) =>
+        result.status === 'fulfilled' ? result.value : [],
+      );
+      return addresses.some((address) => isPrivateIP(address));
+    }
   } catch {
     return false; // 解析失败不阻断，交给后续请求处理
   }

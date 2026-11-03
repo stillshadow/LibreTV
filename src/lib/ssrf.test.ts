@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { isPrivateIP, isValidProxyUrl } from './ssrf';
+import dns from 'node:dns/promises';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { isBlockedByDNS, isPrivateIP, isValidProxyUrl } from './ssrf';
+
+afterEach(() => vi.restoreAllMocks());
 
 describe('isPrivateIP', () => {
   it.each([
@@ -66,5 +69,15 @@ describe('isValidProxyUrl', () => {
     expect(isValidProxyUrl('file:///etc/passwd')).toBe(false);
     expect(isValidProxyUrl('ftp://x.com/a')).toBe(false);
     expect(isValidProxyUrl('not a url')).toBe(false);
+  });
+});
+
+describe('isBlockedByDNS', () => {
+  it('Cloudflare Workers 中 lookup 未实现时改用 resolve4/resolve6', async () => {
+    vi.spyOn(dns, 'lookup').mockRejectedValue(new Error('Not implemented'));
+    vi.spyOn(dns, 'resolve4').mockResolvedValue(['10.0.0.1']);
+    vi.spyOn(dns, 'resolve6').mockResolvedValue(['2606:4700:4700::1111']);
+
+    await expect(isBlockedByDNS('https://example.com/video.m3u8')).resolves.toBe(true);
   });
 });
