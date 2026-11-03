@@ -1,6 +1,7 @@
 'use client';
 
 import type { SearchResponse, SearchStreamEvent, SourceSearchOutcome, VideoDetail, DoubanResponse, BangumiCalendarResponse, AuthStatusResponse, SourceConfig, SearchResultItem, LivePlaylistResponse, LiveEpgResponse, SourceListPayload, QualityProbeItem, QualityProbeResult } from './types';
+import { normalizeTitle } from './cms-parser';
 
 /**
  * 客户端 API 封装。401 时触发全局事件打开登录框，
@@ -105,6 +106,48 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * Cloudflare Workers Free 每次调用只允许有限数量的外部子请求。搜索接口会为每个源
+ * 抓取页面并执行安全检查，因此不能把几十个源塞进同一次 Worker 调用。
+ */
+export const SEARCH_SOURCE_BATCH_SIZE = 5;
+
+function chunkSources(sources: SourceConfig[]): SourceConfig[][] {
+  const batches: SourceConfig[][] = [];
+  for (let i = 0; i < sources.length; i += SEARCH_SOURCE_BATCH_SIZE) {
+    batches.push(sources.slice(i, i + SEARCH_SOURCE_BATCH_SIZE));
+  }
+  return batches;
+}
+
+/** 将多个 Worker 调用的结果还原为一次聚合搜索的结果。 */
+function mergeSearchResponses(responses: SearchResponse[], wd: string): SearchResponse {
+  const seenItems = new Set<string>();
+  const list = responses.flatMap((response) => response.list).filter((item) => {
+    const key = `${item.sourceKey}_${item.vodId}`;
+    if (seenItems.has(key)) return false;
+    seenItems.add(key);
+    return true;
+  });
+
+  const exact = normalizeTitle(wd);
+  list.sort((a, b) => {
+    const exactDiff = Number(normalizeTitle(b.name) === exact) - Number(normalizeTitle(a.name) === exact);
+    if (exactDiff !== 0) return exactDiff;
+    const nameDiff = a.name.localeCompare(b.name, 'zh-Hans-CN');
+    if (nameDiff !== 0) return nameDiff;
+    return (a.sourceName || '').localeCompare(b.sourceName || '', 'zh-Hans-CN');
+  });
+
+  const seenFailures = new Set<string>();
+  const failures = responses.flatMap((response) => response.failures).filter((failure) => {
+    if (seenFailures.has(failure.sourceKey)) return false;
+    seenFailures.add(failure.sourceKey);
+    return true;
+  });
+  return { list, failures };
+}
+
 export const api = {
   status: () => request<AuthStatusResponse>('/api/status'),
 
@@ -130,13 +173,19 @@ export const api = {
   ): Promise<SearchResponse> => {
     const signal = opts?.signal;
     const onSource = opts?.onSource;
+    const batches = chunkSources(sources);
     if (!onSource) {
-      return request<SearchResponse>('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wd, sources, filterAdult }),
-        signal,
-      });
+      const responses = await Promise.all(
+        batches.map((batch) =>
+          request<SearchResponse>('/api/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wd, sources: batch, filterAdult }),
+            signal,
+          })
+        )
+      );
+      return mergeSearchResponses(responses, wd);
     }
     return searchStream(wd, sources, filterAdult, onSource, signal);
   },
@@ -328,25 +377,41 @@ async function searchStream(
   onSource: (outcome: SourceSearchOutcome) => void,
   signal?: AbortSignal
 ): Promise<SearchResponse> {
+  const responses = await Promise.all(
+    chunkSources(sources).map((batch) =>
+      searchStreamBatch(wd, batch, filterAdult, onSource, signal)
+    )
+  );
+  return mergeSearchResponses(responses, wd);
+}
+
+/** 单个 Cloudflare Worker 批次的 NDJSON 搜索。 */
+async function searchStreamBatch(
+  wd: string,
+  sources: SourceConfig[],
+  filterAdult: boolean,
+  onSource: (outcome: SourceSearchOutcome) => void,
+  signal?: AbortSignal
+): Promise<SearchResponse> {
   const res = await fetch('/api/search?stream=1', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ wd, sources, filterAdult }),
     signal,
   });
-    throwForAuthStatus(res);
-    if (!res.ok || !res.body) throw new ApiError(`请求失败 (${res.status})`, res.status);
+  throwForAuthStatus(res);
+  if (!res.ok || !res.body) throw new ApiError(`请求失败 (${res.status})`, res.status);
 
-    // done 事件缺失（流被截断）时退化为空结果，不让整次搜索报错
-    let final: SearchResponse = { list: [], failures: [] };
-    await consumeNdjson<SearchStreamEvent>(res, (event) => {
-      if (event.type === 'source') {
-        onSource(event);
-      } else if (event.type === 'done') {
-        final = { list: event.list, failures: event.failures };
-      }
-    });
-    return final;
-  }
+  // done 事件缺失（流被截断）时退化为空结果，不让整次搜索报错
+  let final: SearchResponse = { list: [], failures: [] };
+  await consumeNdjson<SearchStreamEvent>(res, (event) => {
+    if (event.type === 'source') {
+      onSource(event);
+    } else if (event.type === 'done') {
+      final = { list: event.list, failures: event.failures };
+    }
+  });
+  return final;
+}
 
 export type { SearchResponse, SearchResultItem };

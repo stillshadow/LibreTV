@@ -2,7 +2,8 @@ import type { SourceConfig } from './types';
 
 /**
  * 部署者通过 DEFAULT_SOURCES 环境变量预置的采集站。
- * 格式为 JSON 数组：[{"name":"源名","url":"https://.../api.php/provide/vod","detail":"https://...","isAdult":false}]
+ * 格式为 JSON 数组：[{"key":"env_example","name":"源名","url":"https://.../api.php/provide/vod","detail":"https://...","isAdult":false}]
+ * key 可选；部署者可提供稳定 key，避免删减或重排预置源时把旧健康状态错配到新源。
  * 解析失败时告警并整体忽略，不影响站点运行。
  */
 export function getEnvSources(): SourceConfig[] {
@@ -15,7 +16,7 @@ export function getEnvSources(): SourceConfig[] {
       if (typeof item !== 'object' || item === null) {
         throw new Error(`第 ${i + 1} 项不是对象`);
       }
-      const { name, url, detail, isAdult } = item as Record<string, unknown>;
+      const { key, name, url, detail, isAdult } = item as Record<string, unknown>;
       if (typeof name !== 'string' || !name.trim()) {
         throw new Error(`第 ${i + 1} 项缺少 name`);
       }
@@ -23,7 +24,10 @@ export function getEnvSources(): SourceConfig[] {
         throw new Error(`第 ${i + 1} 项的 url 必须以 http:// 或 https:// 开头`);
       }
       return {
-        key: `env_${i}`,
+        key:
+          typeof key === 'string' && /^env_[A-Za-z0-9_-]{1,59}$/.test(key)
+            ? key
+            : `env_${i}`,
         name: name.trim(),
         url: url.trim().replace(/\/+$/, ''),
         detail: typeof detail === 'string' && detail.trim() ? detail.trim() : undefined,

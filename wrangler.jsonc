@@ -8,6 +8,7 @@
   "vars": {
     "COOKIE_SECURE": "true",
     "REQUEST_TIMEOUT": "8000",
+    "SEARCH_MAX_PAGES": "1",
     "MAX_RETRIES": "1",
     "DEBUG": "false"
   },

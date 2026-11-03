@@ -14,7 +14,8 @@
     "start": "next start -p 8080",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "brand:icons": "node scripts/generate-branded-icons.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",
