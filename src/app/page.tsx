@@ -184,7 +184,9 @@ function HomeContent() {
         <section className={cn('flex flex-col items-center', urlQuery ? 'mb-6' : 'mt-8 mb-8')}>
           {!urlQuery && (
             <header className="text-center mb-6">
-              <h1 className="text-4xl sm:text-5xl font-bold brand-gradient">池边影の影视小站</h1>
+              <h1 className="pb-1 text-4xl sm:text-5xl font-bold leading-[1.25] brand-gradient">
+                池边影の影视小站
+              </h1>
             </header>
           )}
           {urlQuery && <h1 className="sr-only">池边影の影视小站视频搜索</h1>}

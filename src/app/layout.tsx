@@ -14,12 +14,12 @@ export const metadata: Metadata = {
   // 只声明单张 512 时，抓取端只能拿大图缩放，小尺寸下易糊、看起来「没填满」。
   icons: {
     icon: [
-      { url: '/favicon.ico', sizes: '48x48' },
-      { url: '/icons/icon-96.png', sizes: '96x96', type: 'image/png' },
-      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { url: '/favicon-tv.ico', sizes: '48x48' },
+      { url: '/icons/icon-tv-96.png', sizes: '96x96', type: 'image/png' },
+      { url: '/icons/icon-tv-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-tv-512.png', sizes: '512x512', type: 'image/png' },
     ],
-    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+    apple: [{ url: '/icons/apple-touch-icon-tv.png', sizes: '180x180', type: 'image/png' }],
   },
 };
 
